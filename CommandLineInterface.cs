@@ -7,35 +7,42 @@ namespace Il2CppSymbolReader;
 /// </summary>
 public static class CommandLineInterface
 {
+    private static readonly Dictionary<string, (int minArgs, string usage, Func<string[], int> handler)> Commands = 
+        new Dictionary<string, (int, string, Func<string[], int>)>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["read"]    = (2, "read <usym_file_path> [address]", HandleRead),
+        ["lookup"]  = (3, "lookup <usym_file_path> <address>", HandleLookup),
+        ["dump"]    = (2, "dump <usym_file_path>", HandleDump),
+        ["resolve"] = (3, "resolve <usym_file_path> <address1> [address2] ...", HandleResolve),
+        ["help"]    = (1, "help", _ => ShowUsage()),
+        ["-h"]      = (1, "help", _ => ShowUsage()),
+        ["--help"]  = (1, "help", _ => ShowUsage())
+    };
     /// <summary>
-    /// 命令行处理入口点
+    /// 命令行接口，提供所有符号解析功能
     /// </summary>
-    /// <param name="args">命令行参数</param>
-    /// <returns>退出代码</returns>
     public static int Execute(string[] args)
     {
         try
         {
-            Console.WriteLine("IL2CPP Symbol Reader");
-            Console.WriteLine("====================");
+            Console.WriteLine("IL2CPP Symbol Reader\n====================");
             
-            if (args.Length == 0)
+            if (args.Length == 0) 
+                return ShowUsage();
+            
+            if (!Commands.TryGetValue(args[0], out var cmd))
             {
-                ShowUsage();
-                return 0;
+                Console.WriteLine($"Unknown command: {args[0]}");
+                return ShowUsage();
             }
             
-            var command = args[0].ToLower();
-            
-            return command switch
+            if (args.Length < cmd.minArgs)
             {
-                "read" => HandleReadCommand(args),
-                "lookup" => HandleLookupCommand(args),
-                "dump" => HandleDumpCommand(args),
-                "resolve" => HandleResolveCommand(args),
-                "help" or "-h" or "--help" => ShowUsage(),
-                _ => HandleUnknownCommand(command)
-            };
+                Console.WriteLine($"Usage: {cmd.usage}");
+                return 1;
+            }
+            
+            return cmd.handler(args);
         }
         catch (Exception ex)
         {
@@ -43,80 +50,48 @@ public static class CommandLineInterface
             return 1;
         }
     }
-    
-    private static int HandleReadCommand(string[] args)
+    private static int HandleRead(string[] args)
     {
-        if (args.Length < 2)
-        {
-            Console.WriteLine("Usage: read <usym_file_path> [address]");
-            return 1;
-        }
-        
         ReadUsymFile(args[1], args.Length > 2 ? args[2] : null);
         return 0;
     }
-    
-    private static int HandleLookupCommand(string[] args)
+
+    private static int HandleLookup(string[] args)
     {
-        if (args.Length < 3)
-        {
-            Console.WriteLine("Usage: lookup <usym_file_path> <address>");
-            return 1;
-        }
-        
         LookupAddress(args[1], args[2]);
         return 0;
     }
-    
-    private static int HandleDumpCommand(string[] args)
+
+    private static int HandleDump(string[] args)
     {
-        if (args.Length < 2)
-        {
-            Console.WriteLine("Usage: dump <usym_file_path>");
-            return 1;
-        }
-        
         DumpAllSymbols(args[1]);
         return 0;
     }
-    
-    private static int HandleResolveCommand(string[] args)
+
+    private static int HandleResolve(string[] args)
     {
-        if (args.Length < 3)
-        {
-            Console.WriteLine("Usage: resolve <usym_file_path> <address1> [address2] [address3] ...");
-            return 1;
-        }
-        
-        ResolveAddresses(args[1], args.Skip(2).ToArray());
+        ResolveAddresses(args[1], args[2..]);
         return 0;
     }
-    
-    private static int HandleUnknownCommand(string command)
-    {
-        Console.WriteLine($"Unknown command: {command}");
-        ShowUsage();
-        return 1;
-    }
-    
     private static int ShowUsage()
     {
-        Console.WriteLine("Usage:");
-        Console.WriteLine("  read <usym_file_path> [address]  - Read usym file info and optionally lookup address");
-        Console.WriteLine("  lookup <usym_file_path> <address> - Lookup specific address");
-        Console.WriteLine("  dump <usym_file_path>           - Dump all symbols from file");
-        Console.WriteLine("  resolve <usym_file_path> <addr1> [addr2] ... - Resolve multiple addresses to source locations");
-        Console.WriteLine("  help                            - Show this help message");
-        Console.WriteLine();
-        Console.WriteLine("Address format:");
-        Console.WriteLine("  Decimal: 1234567890 (C++ StackTrace output format)");
-        Console.WriteLine("  Hex: 0x1234ABCD or 1234ABCD (for manual testing)");
-        Console.WriteLine();
-        Console.WriteLine("Examples:");
-        Console.WriteLine("  Il2CppSymbolReader read il2cpp.usym");
-        Console.WriteLine("  Il2CppSymbolReader lookup il2cpp.usym 1234567890");
-        Console.WriteLine("  Il2CppSymbolReader dump il2cpp.usym");
-        Console.WriteLine("  Il2CppSymbolReader resolve il2cpp.usym 1234567890 2345678901 3456789012");
+        Console.WriteLine(string.Join(Environment.NewLine, new[]
+        {
+            "Usage:",
+            "  read <usym_file_path> [address]  - Read usym file info and optionally lookup address",
+            "  lookup <usym_file_path> <address> - Lookup specific address",
+            "  dump <usym_file_path>           - Dump all symbols from file",
+            "  resolve <usym_file_path> <addr1> [addr2] ... - Resolve multiple addresses to source locations",
+            "  help                            - Show this help message",
+            "\nAddress format:",
+            "  Decimal: 1234567890 (C++ StackTrace output format)",
+            "  Hex: 0x1234ABCD or 1234ABCD (for manual testing)",
+            "\nExamples:",
+            "  Il2CppSymbolReader read il2cpp.usym",
+            "  Il2CppSymbolReader lookup il2cpp.usym 1234567890",
+            "  Il2CppSymbolReader dump il2cpp.usym",
+            "  Il2CppSymbolReader resolve il2cpp.usym 1234567890 2345678901 3456789012"
+        }));
         
         return 0;
     }
@@ -126,27 +101,26 @@ public static class CommandLineInterface
         try
         {
             using var reader = new UsymReader(filePath);
+            var header = reader.Header;
             
             Console.WriteLine($"Successfully loaded usym file: {filePath}");
-            Console.WriteLine($"Magic: {reader.Header.Magic}");
-            Console.WriteLine($"Version: {reader.Header.Version}");
-            Console.WriteLine($"Line Count: {reader.Header.LineCount}");
-            Console.WriteLine($"ID: {reader.GetString(reader.Header.Id)}");
-            Console.WriteLine($"OS: {reader.GetString(reader.Header.Os)}");
-            Console.WriteLine($"Arch: {reader.GetString(reader.Header.Arch)}");
-            Console.WriteLine();
-            
-            if (!string.IsNullOrEmpty(addressStr))
+            Console.WriteLine(string.Join(Environment.NewLine, new[]
             {
-                if (TryParseAddress(addressStr, out ulong address))
-                {
-                    LookupAddressInternal(reader, address);
-                }
-                else
-                {
-                    Console.WriteLine($"Invalid address format: {addressStr}");
-                }
-            }
+                $"Magic: {header.Magic}",
+                $"Version: {header.Version}",
+                $"Line Count: {header.LineCount}",
+                $"ID: {reader.GetString(header.Id)}",
+                $"OS: {reader.GetString(header.Os)}",
+                $"Arch: {reader.GetString(header.Arch)}",
+                ""
+            }));
+    
+            if (string.IsNullOrEmpty(addressStr)) return;
+            
+            if (TryParseAddress(addressStr, out ulong address))
+                LookupAddressInternal(reader, address);
+            else
+                Console.WriteLine($"Invalid address format: {addressStr}");
         }
         catch (Exception ex)
         {
@@ -174,45 +148,35 @@ public static class CommandLineInterface
     }
     
     private static void LookupAddressInternal(UsymReader reader, ulong address)
-    {
-        Console.WriteLine($"Looking up address: {address}");
-        Console.WriteLine();
-        
-        // 查找单个符号
-        var symbol = reader.FindSymbol(address);
-        if (symbol.HasValue)
+{
+    Console.WriteLine($"Looking up address: {address}\n");
+    
+    if (reader.FindSymbol(address) is { } symbol)
+        Console.WriteLine(string.Join(Environment.NewLine, new[]
         {
-            Console.WriteLine("Found symbol:");
-            Console.WriteLine($"  File: {symbol.Value.FileName}");
-            Console.WriteLine($"  Line: {symbol.Value.LineNumber}");
-            Console.WriteLine($"  Method Index: {symbol.Value.MethodIndex}");
-            Console.WriteLine($"  Address: {symbol.Value.Address}");
-            Console.WriteLine($"  Parent: {symbol.Value.Parent}");
-            Console.WriteLine();
-        }
-        else
+            $"Found symbol:",
+            $"  File: {symbol.FileName}",
+            $"  Line: {symbol.LineNumber}",
+            $"  Method Index: {symbol.MethodIndex}",
+            $"  Address: {symbol.Address}",
+            $"  Parent: {symbol.Parent}"
+        }));
+    else
+        Console.WriteLine("No symbol found for this address.\n");
+
+    var frames = reader.GetStackFrames(address);
+    if (frames.Count == 0) return;
+    
+    Console.WriteLine("Stack frames (including inlined functions):");
+    for (int i = 0; i < frames.Count; i++)
+        Console.WriteLine(string.Join(Environment.NewLine, new[]
         {
-            Console.WriteLine("No symbol found for this address.");
-            Console.WriteLine();
-        }
-        
-        // 获取完整的堆栈帧（包括内联函数）
-        var frames = reader.GetStackFrames(address);
-        if (frames.Count > 0)
-        {
-            Console.WriteLine("Stack frames (including inlined functions):");
-            for (int i = 0; i < frames.Count; i++)
-            {
-                var frame = frames[i];
-                Console.WriteLine($"  Frame {i}:");
-                Console.WriteLine($"    File: {frame.FileName}");
-                Console.WriteLine($"    Line: {frame.LineNumber}");
-                Console.WriteLine($"    Method Index: {frame.MethodIndex}");
-                Console.WriteLine($"    Address: {frame.Address}");
-                Console.WriteLine();
-            }
-        }
-    }
+            $"  Frame {i}:",
+            $"    File: {frames[i].FileName}",
+            $"    Line: {frames[i].LineNumber}" +
+            $"    Method Index: {frames[i].MethodIndex}",
+            $"    Address: {frames[i].Address}" }));
+}
     
     private static void DumpAllSymbols(string filePath)
     {

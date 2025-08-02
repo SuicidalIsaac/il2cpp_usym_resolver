@@ -81,6 +81,7 @@ public class MemoryMappedFile : IDisposable
         return new MemoryMappedViewAccessor(ptr, size);
     }
     
+    /// <inheritdoc/>
     public void Dispose()
     {
         _mappingHandle?.Dispose();
@@ -113,8 +114,10 @@ public class MemoryMappedFile : IDisposable
 /// </summary>
 public class SafeMemoryMappedFileHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
+    /// <inheritdoc/>
     public SafeMemoryMappedFileHandle() : base(true) { }
     
+    /// <inheritdoc/>
     protected override bool ReleaseHandle()
     {
         return CloseHandle(handle);
@@ -138,8 +141,11 @@ public class SafeMemoryMappedFileHandle : SafeHandleZeroOrMinusOneIsInvalid
 /// </summary>
 public enum MemoryMappedFileAccess
 {
+    /// <inheritdoc/>
     Read,
+    /// <inheritdoc/>
     Write,
+    /// <inheritdoc/>
     ReadWrite
 }
 
@@ -158,8 +164,10 @@ public class MemoryMappedViewAccessor : IDisposable
         _capacity = capacity;
     }
     
+    /// <inheritdoc/>
     public long Capacity => _capacity;
     
+    /// <inheritdoc/>
     public void ReadArray<T>(long position, T[] array, int offset, int count) where T : struct
     {
         if (_disposed)
@@ -187,6 +195,7 @@ public class MemoryMappedViewAccessor : IDisposable
         }
     }
     
+    /// <inheritdoc/>
     public void Dispose()
     {
         if (!_disposed)
